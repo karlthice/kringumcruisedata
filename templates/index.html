@@ -9,9 +9,146 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
         #map { height: 100%; width: 100%; }
+        .popup-tag {
+            display: inline-block;
+            background: #3388ff;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .popup-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+        .popup-story {
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-line;
+        }
+        /* Menu bar */
+        #menu-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+        }
+        #menu-wrap {
+            position: relative;
+        }
+        #menu-btn {
+            background: #fff;
+            border: 2px solid rgba(0,0,0,.2);
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            padding: 8px 24px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+        #menu-btn:hover { background: #f4f4f4; }
+        /* Dropdown */
+        #menu-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.15);
+            min-width: 160px;
+        }
+        #menu-dropdown .menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #menu-dropdown .menu-item:hover { background: #f0f0f0; }
+        /* Modal overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: rgba(0,0,0,.4);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            width: 560px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 24px rgba(0,0,0,.25);
+        }
+        .modal h2 { margin: 0 0 16px; font-size: 18px; }
+        .modal label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
+        .modal textarea {
+            width: 100%;
+            height: 200px;
+            font-family: inherit;
+            font-size: 13px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        .modal-actions {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .modal-actions button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-save { background: #3388ff; color: #fff; }
+        .btn-save:hover { background: #226be0; }
+        .btn-cancel { background: #e0e0e0; color: #333; }
+        .btn-cancel:hover { background: #ccc; }
     </style>
 </head>
 <body>
+    <div id="menu-bar">
+        <div id="menu-wrap">
+            <button id="menu-btn">Kringum Cruise</button>
+            <div id="menu-dropdown">
+                <div class="menu-item" id="menu-settings">Settings</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settings-overlay">
+        <div class="modal">
+            <h2>Settings</h2>
+            <label for="prompt-fillport">Port prompt</label>
+            <textarea id="prompt-fillport" maxlength="4096" placeholder="Enter prompt for port filling (max 4096 chars)..."></textarea>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="settings-cancel">Cancel</button>
+                <button class="btn-save" id="settings-save">Save</button>
+            </div>
+        </div>
+    </div>
+
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -26,6 +163,255 @@
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
+
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // European cruise routes
+        const cruiseRoutes = [
+            {
+                name: "Western Mediterranean",
+                color: "#e74c3c",
+                ports: [
+                    [36.13, -5.35],   // Gibraltar
+                    [36.72, -4.42],   // Málaga
+                    [36.75, -2.46],   // Almería
+                    [37.60, -0.98],   // Cartagena
+                    [38.35, -0.48],   // Alicante
+                    [39.45, -0.32],   // Valencia
+                    [39.56, 2.63],    // Palma de Mallorca
+                    [41.38, 2.17],    // Barcelona
+                    [43.30, 5.37],    // Marseille
+                    [43.55, 7.02],    // Nice
+                    [44.41, 8.93],    // Genoa
+                    [43.72, 10.40],   // Livorno (Florence)
+                    [41.90, 12.47],   // Civitavecchia (Rome)
+                    [40.84, 14.27],   // Naples
+                    [38.12, 13.37],   // Palermo
+                    [35.90, 14.51],   // Valletta (Malta)
+                    [36.80, 10.18],   // Tunis
+                    [36.13, -5.35],   // back to Gibraltar
+                ]
+            },
+            {
+                name: "Eastern Mediterranean",
+                color: "#2ecc71",
+                ports: [
+                    [45.44, 12.34],   // Venice
+                    [44.87, 13.85],   // Pula
+                    [42.65, 18.09],   // Dubrovnik
+                    [39.62, 19.92],   // Corfu
+                    [37.94, 23.65],   // Piraeus (Athens)
+                    [36.39, 25.46],   // Santorini
+                    [35.34, 25.14],   // Heraklion (Crete)
+                    [36.45, 28.22],   // Rhodes
+                    [36.84, 30.61],   // Antalya
+                    [34.69, 33.04],   // Limassol (Cyprus)
+                    [31.20, 29.90],   // Alexandria
+                    [35.34, 25.14],   // Heraklion
+                    [37.94, 23.65],   // Piraeus
+                    [45.44, 12.34],   // back to Venice
+                ]
+            },
+            {
+                name: "Norwegian Fjords",
+                color: "#3498db",
+                ports: [
+                    [57.71, 11.97],   // Gothenburg
+                    [58.97, 5.73],    // Stavanger
+                    [59.91, 5.31],    // Haugesund (offshore)
+                    [60.39, 5.33],    // Bergen
+                    [61.60, 5.10],    // Florø
+                    [62.47, 6.15],    // Ålesund
+                    [62.74, 7.16],    // Molde / Geiranger approach
+                    [63.43, 10.40],   // Trondheim
+                    [66.31, 14.14],   // Bodø
+                    [68.43, 16.45],   // Narvik / Lofoten
+                    [69.65, 18.96],   // Tromsø
+                    [70.07, 22.97],   // Hammerfest
+                    [71.11, 25.78],   // Honningsvåg (North Cape)
+                ]
+            },
+            {
+                name: "Baltic Sea",
+                color: "#9b59b6",
+                ports: [
+                    [55.68, 12.59],   // Copenhagen
+                    [54.09, 12.13],   // Warnemünde (Berlin)
+                    [54.32, 13.09],   // Sassnitz/Rügen
+                    [54.52, 18.54],   // Gdynia
+                    [57.71, 11.97],   // Gothenburg
+                    [59.33, 18.07],   // Stockholm
+                    [59.44, 24.75],   // Tallinn
+                    [59.95, 24.75],   // offshore
+                    [59.94, 30.26],   // St. Petersburg
+                    [60.17, 24.94],   // Helsinki
+                    [55.68, 12.59],   // back to Copenhagen
+                ]
+            },
+            {
+                name: "British Isles",
+                color: "#f39c12",
+                ports: [
+                    [50.90, -1.40],   // Southampton
+                    [50.37, -4.14],   // Plymouth
+                    [51.45, -5.04],   // Milford Haven
+                    [51.90, -5.27],   // Fishguard
+                    [53.30, -3.02],   // Liverpool approach
+                    [53.41, -3.01],   // Liverpool
+                    [54.99, -5.80],   // Belfast approach
+                    [54.60, -5.93],   // Belfast
+                    [55.95, -5.66],   // offshore Mull
+                    [57.48, -6.30],   // Isle of Skye
+                    [58.44, -5.03],   // Ullapool
+                    [58.97, -2.96],   // Orkney
+                    [57.50, -1.78],   // Aberdeen offshore
+                    [55.98, -3.18],   // Edinburgh / Leith
+                    [50.90, -1.40],   // back to Southampton
+                ]
+            },
+            {
+                name: "Canary Islands",
+                color: "#1abc9c",
+                ports: [
+                    [36.13, -5.35],   // Gibraltar
+                    [33.60, -7.62],   // Casablanca
+                    [32.38, -9.24],   // Safi
+                    [29.60, -13.60],  // Fuerteventura
+                    [28.96, -13.55],  // Arrecife (Lanzarote)
+                    [28.50, -16.25],  // Tenerife
+                    [28.10, -15.41],  // Las Palmas (Gran Canaria)
+                    [32.63, -16.90],  // Funchal (Madeira)
+                    [38.72, -9.14],   // Lisbon
+                    [43.37, -8.40],   // A Coruña
+                    [43.46, -3.80],   // Santander
+                    [36.13, -5.35],   // back to Gibraltar
+                ]
+            },
+            {
+                name: "Iceland & North Atlantic",
+                color: "#e67e22",
+                ports: [
+                    [55.68, 12.59],   // Copenhagen
+                    [57.05, 9.92],    // Skagen
+                    [60.39, 5.33],    // Bergen
+                    [61.78, -6.77],   // Tórshavn (Faroe Islands)
+                    [63.07, -7.64],   // offshore
+                    [63.44, -20.27],  // Vestmannaeyjar
+                    [64.15, -21.93],  // Reykjavík
+                    [65.68, -18.09],  // Akureyri
+                    [66.05, -17.35],  // offshore north
+                    [64.91, -13.68],  // Seyðisfjörður
+                    [62.01, -6.77],   // Faroe Islands
+                    [60.39, 5.33],    // Bergen
+                ]
+            },
+        ];
+
+        cruiseRoutes.forEach(route => {
+            L.polyline(route.ports, {
+                color: route.color,
+                weight: 3,
+                opacity: 0.7,
+                dashArray: "8, 6",
+            }).addTo(map).bindTooltip(route.name, { sticky: true });
+        });
+
+        const portIcon = L.divIcon({
+            html: '<div style="background:#e74c3c;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>',
+            className: "",
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
+        });
+
+        function parseGps(gps) {
+            if (!gps) return null;
+            const parts = gps.split(",");
+            if (parts.length !== 2) return null;
+            const lat = parseFloat(parts[0]);
+            const lon = parseFloat(parts[1]);
+            if (isNaN(lat) || isNaN(lon)) return null;
+            return [lat, lon];
+        }
+
+        function makePopup(tag, name, text) {
+            return `<div style="min-width:350px;max-width:500px">
+                <span class="popup-tag">${escapeHtml(tag || "")}</span>
+                <div class="popup-name">${escapeHtml(name)}</div>
+                <div class="popup-story">${escapeHtml(text || "")}</div>
+            </div>`;
+        }
+
+        // Load ports
+        fetch("/api/ports")
+            .then(res => res.json())
+            .then(ports => {
+                ports.forEach(port => {
+                    const coords = parseGps(port.gps);
+                    if (!coords) return;
+                    const label = port.name + (port.country ? ", " + port.country : "");
+                    const popup = makePopup(port.tag, label, port.description);
+                    L.marker(coords, { icon: portIcon })
+                        .addTo(map)
+                        .bindPopup(popup, { maxWidth: 500 });
+                });
+            });
+
+        // Load items
+        fetch("/api/items")
+            .then(res => res.json())
+            .then(items => {
+                items.forEach(item => {
+                    const coords = parseGps(item.gps);
+                    if (!coords) return;
+                    const popup = makePopup(item.tag, item.name, item.story);
+                    L.marker(coords)
+                        .addTo(map)
+                        .bindPopup(popup, { maxWidth: 500 });
+                });
+            });
+        // Menu toggle
+        const menuBtn = document.getElementById("menu-btn");
+        const menuDropdown = document.getElementById("menu-dropdown");
+        menuBtn.addEventListener("click", e => {
+            e.stopPropagation();
+            menuDropdown.style.display = menuDropdown.style.display === "block" ? "none" : "block";
+        });
+        document.addEventListener("click", () => { menuDropdown.style.display = "none"; });
+
+        // Settings dialog
+        const overlay = document.getElementById("settings-overlay");
+        const promptField = document.getElementById("prompt-fillport");
+
+        document.getElementById("menu-settings").addEventListener("click", () => {
+            menuDropdown.style.display = "none";
+            fetch("/api/settings")
+                .then(r => r.json())
+                .then(s => {
+                    promptField.value = s.PROMPT_FILLPORT || "";
+                    overlay.classList.add("open");
+                });
+        });
+
+        document.getElementById("settings-cancel").addEventListener("click", () => {
+            overlay.classList.remove("open");
+        });
+        overlay.addEventListener("click", e => {
+            if (e.target === overlay) overlay.classList.remove("open");
+        });
+
+        document.getElementById("settings-save").addEventListener("click", () => {
+            fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ PROMPT_FILLPORT: promptField.value })
+            })
+            .then(r => r.json())
+            .then(() => { overlay.classList.remove("open"); });
+        });
     </script>
 </body>
 </html>
