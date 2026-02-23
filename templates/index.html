@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>World Map</title>
+    <title>Kringum Cruise Data</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -125,6 +125,136 @@
         .btn-save:hover { background: #226be0; }
         .btn-cancel { background: #e0e0e0; color: #333; }
         .btn-cancel:hover { background: #ccc; }
+        /* Port popup action buttons */
+        .port-action-btn {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            color: #fff;
+        }
+        .port-action-btn.fill { background: #27ae60; }
+        .port-action-btn.fill:hover { background: #219a52; }
+        .port-action-btn.clear { background: #e74c3c; }
+        .port-action-btn.clear:hover { background: #c0392b; }
+        .port-action-btn:disabled { opacity: .6; cursor: not-allowed; }
+        /* Progress bar */
+        .port-progress {
+            display: none;
+            margin-top: 8px;
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+            overflow: hidden;
+        }
+        .port-progress.active { display: block; }
+        .port-progress-bar {
+            height: 100%;
+            width: 30%;
+            background: #3388ff;
+            border-radius: 3px;
+            animation: progress-slide 1.2s ease-in-out infinite;
+        }
+        @keyframes progress-slide {
+            0%   { margin-left: 0;   width: 30%; }
+            50%  { margin-left: 40%; width: 40%; }
+            100% { margin-left: 70%; width: 30%; }
+        }
+        /* Placement panel */
+        #place-panel {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1500;
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px 20px;
+            min-width: 240px;
+            max-width: 340px;
+            max-height: 60vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 24px rgba(0,0,0,.3);
+        }
+        #place-panel.open { display: block; }
+        #place-panel h3 {
+            margin: 0 0 10px;
+            font-size: 15px;
+            color: #333;
+        }
+        .place-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #333;
+        }
+        .place-item:hover { background: #e8f0fe; }
+        .place-item .place-tag {
+            display: inline-block;
+            background: #3388ff;
+            color: #fff;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        #place-panel .hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
+        /* Port marker */
+        .port-marker-dot {
+            width: 16px; height: 16px; border-radius: 50%;
+            background: #e74c3c; border: 2px solid #fff;
+            box-shadow: 0 0 3px rgba(0,0,0,.4);
+        }
+        .port-marker-label {
+            position: absolute; top: 18px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px; font-weight: bold; color: #e74c3c;
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+            white-space: nowrap; pointer-events: none;
+        }
+        /* Item marker */
+        .item-marker-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #3388ff; border: 2px solid #fff;
+            box-shadow: 0 0 3px rgba(0,0,0,.4);
+        }
+        .item-marker-dot.nogeo {
+            background: #ff8800;
+        }
+        .item-marker-dot.selected {
+            width: 16px; height: 16px;
+            background: #ff8800;
+            box-shadow: 0 0 10px rgba(255,136,0,.6);
+        }
+        .item-marker-dot.selected.nogeo {
+            background: #ff8800;
+        }
+        .item-marker-label {
+            position: absolute; top: 14px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px; color: #333;
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+            white-space: nowrap; pointer-events: none;
+            max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+        }
+        /* Relocate hint banner */
+        .relocate-hint {
+            display: none; position: fixed; top: 0; left: 0; right: 0;
+            z-index: 1600; background: #ff8800; color: #fff;
+            text-align: center; padding: 10px; font-weight: bold; font-size: 14px;
+        }
+        .relocate-hint.active { display: block; }
     </style>
 </head>
 <body>
@@ -149,6 +279,13 @@
         </div>
     </div>
 
+    <div id="place-panel">
+        <h3 id="place-title">Place items</h3>
+        <div id="place-list"></div>
+        <div class="hint">Click an item to place it here. Press ESC to cancel.</div>
+    </div>
+
+    <div class="relocate-hint" id="relocate-hint">Click on the map to set new location (ESC to cancel)</div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -320,12 +457,29 @@
             }).addTo(map).bindTooltip(route.name, { sticky: true });
         });
 
-        const portIcon = L.divIcon({
-            html: '<div style="background:#e74c3c;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>',
-            className: "",
-            iconSize: [10, 10],
-            iconAnchor: [5, 5],
-        });
+        function makePortIcon(name) {
+            return L.divIcon({
+                html: `<div class="port-marker-dot"></div><div class="port-marker-label">${escapeHtml(name)}</div>`,
+                className: "",
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+            });
+        }
+
+        function makeItemIcon(name, selected, geocoded) {
+            const label = name.length > 12 ? name.slice(0, 12) + "…" : name;
+            let cls = "item-marker-dot";
+            if (!geocoded) cls += " nogeo";
+            if (selected) cls += " selected";
+            const size = selected ? 16 : 12;
+            const anchor = size / 2;
+            return L.divIcon({
+                html: `<div class="${cls}"></div><div class="item-marker-label">${escapeHtml(label)}</div>`,
+                className: "",
+                iconSize: [size, size],
+                iconAnchor: [anchor, anchor],
+            });
+        }
 
         function parseGps(gps) {
             if (!gps) return null;
@@ -345,34 +499,298 @@
             </div>`;
         }
 
-        // Load ports
-        fetch("/api/ports")
-            .then(res => res.json())
-            .then(ports => {
-                ports.forEach(port => {
-                    const coords = parseGps(port.gps);
-                    if (!coords) return;
-                    const label = port.name + (port.country ? ", " + port.country : "");
-                    const popup = makePopup(port.tag, label, port.description);
-                    L.marker(coords, { icon: portIcon })
-                        .addTo(map)
-                        .bindPopup(popup, { maxWidth: 500 });
+        // Port data for distance lookups
+        let portsData = [];
+
+        // Layer groups for easy refresh
+        const portLayer = L.layerGroup().addTo(map);
+        const itemLayer = L.layerGroup().addTo(map);
+
+        // Selection & relocate state
+        const itemMarkers = new Map(); // id -> { marker, item }
+        let selectedItemId = null;
+        let relocatingItemId = null;
+        let _selectingItem = false;
+
+        function loadPorts() {
+            portLayer.clearLayers();
+            fetch("/api/ports")
+                .then(res => res.json())
+                .then(ports => {
+                    portsData = ports;
+                    ports.forEach(port => {
+                        const coords = parseGps(port.gps);
+                        if (!coords) return;
+                        const label = port.name + (port.country ? ", " + port.country : "");
+                        const marker = L.marker(coords, { icon: makePortIcon(port.name) }).addTo(portLayer);
+                        marker.on("click", () => {
+                            deselectItem();
+                            openPortPopup(marker, port, label);
+                        });
+                    });
                 });
+        }
+
+        function loadItems() {
+            itemLayer.clearLayers();
+            itemMarkers.clear();
+            selectedItemId = null;
+            fetch("/api/items")
+                .then(res => res.json())
+                .then(items => {
+                    items.forEach(item => {
+                        const coords = parseGps(item.gps);
+                        if (!coords) return;
+                        const marker = L.marker(coords, { icon: makeItemIcon(item.name, false, item.geocoded) })
+                            .addTo(itemLayer);
+                        marker.on("click", () => selectItem(item.id));
+                        itemMarkers.set(item.id, { marker, item });
+                    });
+                });
+        }
+
+        function makeItemPopup(item) {
+            let html = `<div style="min-width:350px;max-width:500px">
+                <span class="popup-tag">${escapeHtml(item.tag || "")}</span>
+                <div class="popup-name">${escapeHtml(item.name)}</div>
+                <div class="popup-story">${escapeHtml(item.story || "")}</div>`;
+            if (item.address) {
+                html += `<div style="font-size:12px;color:#888;margin-top:4px">${escapeHtml(item.address)}</div>`;
+            }
+            html += `<button class="port-action-btn" style="background:#3388ff"
+                    onclick="startRelocate(${item.id})">Reset location</button>
+            </div>`;
+            return html;
+        }
+
+        function selectItem(id) {
+            if (id === selectedItemId) {
+                map.closePopup();
+                deselectItem();
+                return;
+            }
+            _selectingItem = true;
+            deselectItem();
+            const entry = itemMarkers.get(id);
+            if (!entry) { _selectingItem = false; return; }
+            selectedItemId = id;
+            entry.marker.setIcon(makeItemIcon(entry.item.name, true, entry.item.geocoded));
+            entry.marker.unbindPopup();
+            entry.marker.bindPopup(makeItemPopup(entry.item), { maxWidth: 500 }).openPopup();
+            _selectingItem = false;
+        }
+
+        function deselectItem() {
+            if (selectedItemId === null) return;
+            const entry = itemMarkers.get(selectedItemId);
+            selectedItemId = null;
+            if (entry) {
+                entry.marker.setIcon(makeItemIcon(entry.item.name, false, entry.item.geocoded));
+            }
+        }
+
+        function startRelocate(itemId) {
+            relocatingItemId = itemId;
+            map.closePopup();
+            document.getElementById("map").style.cursor = "crosshair";
+            document.getElementById("relocate-hint").classList.add("active");
+        }
+
+        function cancelRelocate() {
+            relocatingItemId = null;
+            document.getElementById("map").style.cursor = "";
+            document.getElementById("relocate-hint").classList.remove("active");
+        }
+
+        function openPortPopup(marker, port, label) {
+            // Show a loading popup first
+            marker.unbindPopup();
+            marker.bindPopup(`<div style="min-width:250px"><b>${escapeHtml(label)}</b><br>Loading…</div>`, { maxWidth: 500 }).openPopup();
+
+            Promise.all([
+                fetch(`/api/ports/${port.id}/items`).then(r => r.json()),
+                fetch(`/api/ports/${port.id}/unplaced`).then(r => r.json()),
+            ]).then(([data, unplaced]) => {
+                    const count = data.count || 0;
+                    const unplacedCount = unplaced.length;
+                    let btnHtml;
+                    if (count > 0) {
+                        btnHtml = `<button class="port-action-btn clear" onclick="clearPort(${port.id}, this)">`
+                            + `Clear all port items (${count})</button>`;
+                    } else {
+                        btnHtml = `<button class="port-action-btn fill" onclick="fillPort(${port.id}, this)">`
+                            + `Fill port items</button>`;
+                    }
+                    let countLine = "";
+                    if (count > 0) {
+                        countLine = `<div style="font-size:13px;margin-top:6px;color:#555">${count} items`;
+                        if (unplacedCount > 0) {
+                            countLine += ` (${unplacedCount} unplaced)`;
+                        }
+                        countLine += `</div>`;
+                        if (unplacedCount > 0) {
+                            countLine += `<div style="font-size:12px;color:#888;margin-top:2px">Click on the map near this port to place them</div>`;
+                        }
+                    }
+                    const html = `<div style="min-width:250px;max-width:500px">
+                        <span class="popup-tag">${escapeHtml(port.tag || "")}</span>
+                        <div class="popup-name">${escapeHtml(label)}</div>
+                        <div class="popup-story">${escapeHtml(port.description || "")}</div>
+                        ${countLine}
+                        ${btnHtml}
+                        <div class="port-progress" id="pp-${port.id}"><div class="port-progress-bar"></div></div>
+                    </div>`;
+                    marker.unbindPopup();
+                    marker.bindPopup(html, { maxWidth: 500 }).openPopup();
+                });
+        }
+
+        function fillPort(portId, btn) {
+            btn.disabled = true;
+            btn.textContent = "Generating…";
+            const bar = document.getElementById("pp-" + portId);
+            if (bar) bar.classList.add("active");
+
+            fetch(`/api/ports/${portId}/fill`, { method: "POST" })
+                .then(r => {
+                    if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Fill failed"); });
+                    return r.json();
+                })
+                .then(() => {
+                    map.closePopup();
+                    loadItems();
+                })
+                .catch(err => {
+                    alert("Fill failed: " + err.message);
+                    btn.disabled = false;
+                    btn.textContent = "Fill port items";
+                    if (bar) bar.classList.remove("active");
+                });
+        }
+
+        function clearPort(portId, btn) {
+            if (!confirm("Delete all items for this port?")) return;
+            btn.disabled = true;
+
+            fetch(`/api/ports/${portId}/items`, { method: "DELETE" })
+                .then(r => r.json())
+                .then(() => {
+                    map.closePopup();
+                    loadItems();
+                })
+                .catch(err => {
+                    alert("Clear failed: " + err.message);
+                    btn.disabled = false;
+                });
+        }
+
+        // Haversine distance in km
+        function haversineKm(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const toRad = d => d * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        // Placement panel logic
+        const placePanel = document.getElementById("place-panel");
+        const placeTitle = document.getElementById("place-title");
+        const placeList = document.getElementById("place-list");
+
+        function closePlacePanel() {
+            placePanel.classList.remove("open");
+            placeList.innerHTML = "";
+        }
+
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") {
+                if (relocatingItemId !== null) {
+                    cancelRelocate();
+                } else {
+                    closePlacePanel();
+                }
+            }
+        });
+
+        map.on("click", e => {
+            const clickLat = e.latlng.lat;
+            const clickLon = e.latlng.lng;
+
+            // Relocate mode: set new GPS for the item
+            if (relocatingItemId !== null) {
+                fetch(`/api/items/${relocatingItemId}/gps`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ lat: clickLat, lon: clickLon })
+                })
+                .then(r => r.json())
+                .then(() => {
+                    cancelRelocate();
+                    loadItems();
+                });
+                return;
+            }
+
+            deselectItem();
+
+            // Find nearest port within 50 km
+            let nearest = null;
+            let nearestDist = Infinity;
+            portsData.forEach(port => {
+                const coords = parseGps(port.gps);
+                if (!coords) return;
+                const d = haversineKm(clickLat, clickLon, coords[0], coords[1]);
+                if (d < nearestDist) {
+                    nearestDist = d;
+                    nearest = port;
+                }
             });
 
-        // Load items
-        fetch("/api/items")
-            .then(res => res.json())
-            .then(items => {
-                items.forEach(item => {
-                    const coords = parseGps(item.gps);
-                    if (!coords) return;
-                    const popup = makePopup(item.tag, item.name, item.story);
-                    L.marker(coords)
-                        .addTo(map)
-                        .bindPopup(popup, { maxWidth: 500 });
+            if (!nearest || nearestDist > 50) {
+                closePlacePanel();
+                return;
+            }
+
+            fetch(`/api/ports/${nearest.id}/unplaced`)
+                .then(r => r.json())
+                .then(items => {
+                    if (!items.length) {
+                        closePlacePanel();
+                        return;
+                    }
+                    placeTitle.textContent = `Place items — ${nearest.name}`;
+                    placeList.innerHTML = "";
+                    items.forEach(item => {
+                        const div = document.createElement("div");
+                        div.className = "place-item";
+                        div.innerHTML = escapeHtml(item.name)
+                            + (item.tag ? ` <span class="place-tag">${escapeHtml(item.tag)}</span>` : "");
+                        div.addEventListener("click", () => {
+                            fetch(`/api/items/${item.id}/gps`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ lat: clickLat, lon: clickLon })
+                            })
+                            .then(r => r.json())
+                            .then(() => {
+                                closePlacePanel();
+                                loadItems();
+                            });
+                        });
+                        placeList.appendChild(div);
+                    });
+                    placePanel.classList.add("open");
                 });
-            });
+        });
+
+        map.on("popupclose", () => {
+            if (relocatingItemId === null && !_selectingItem) deselectItem();
+        });
+
+        loadPorts();
+        loadItems();
         // Menu toggle
         const menuBtn = document.getElementById("menu-btn");
         const menuDropdown = document.getElementById("menu-dropdown");
