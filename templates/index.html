@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kringum Cruise Data</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
         html, body { height: 100%; }
         #map { height: 100%; width: 100%; }
         .popup-tag {
@@ -225,7 +226,7 @@
         }
         /* Item marker */
         .item-marker-dot {
-            width: 12px; height: 12px; border-radius: 50%;
+            width: 24px; height: 24px; border-radius: 50%;
             background: #3388ff; border: 2px solid #fff;
             box-shadow: 0 0 3px rgba(0,0,0,.4);
         }
@@ -233,7 +234,7 @@
             background: #ff8800;
         }
         .item-marker-dot.selected {
-            width: 16px; height: 16px;
+            width: 32px; height: 32px;
             background: #ff8800;
             box-shadow: 0 0 10px rgba(255,136,0,.6);
         }
@@ -241,12 +242,12 @@
             background: #ff8800;
         }
         .item-marker-label {
-            position: absolute; top: 14px; left: 50%;
+            position: absolute; top: 26px; left: 50%;
             transform: translateX(-50%);
-            font-size: 10px; color: #333;
+            font-size: 15px; color: #333;
             text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
             white-space: nowrap; pointer-events: none;
-            max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+            max-width: 120px; overflow: hidden; text-overflow: ellipsis;
         }
         /* Relocate hint banner */
         .relocate-hint {
@@ -255,6 +256,55 @@
             text-align: center; padding: 10px; font-weight: bold; font-size: 14px;
         }
         .relocate-hint.active { display: block; }
+        /* Wiki search panel */
+        #wiki-panel {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1500;
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px 20px;
+            min-width: 300px;
+            max-width: 420px;
+            max-height: 60vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 24px rgba(0,0,0,.3);
+        }
+        #wiki-panel.open { display: block; }
+        #wiki-panel h3 { margin: 0 0 10px; font-size: 15px; color: #333; }
+        #wiki-panel .hint { font-size: 12px; color: #888; margin-top: 8px; }
+        .wiki-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #333;
+        }
+        .wiki-item:hover { background: #e8f0fe; }
+        .wiki-item .wiki-dist {
+            display: inline-block;
+            background: #888;
+            color: #fff;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        .wiki-item.importing { opacity: .6; cursor: wait; }
+        /* Edit item modal */
+        .edit-field { margin-bottom: 12px; }
+        .edit-field label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 13px; }
+        .edit-field input, .edit-field select {
+            width: 100%; padding: 6px 8px; font-size: 13px;
+            border: 1px solid #ccc; border-radius: 4px; font-family: inherit;
+        }
+        .edit-field textarea {
+            width: 100%; height: 160px; padding: 6px 8px; font-size: 13px;
+            border: 1px solid #ccc; border-radius: 4px; font-family: inherit; resize: vertical;
+        }
     </style>
 </head>
 <body>
@@ -262,6 +312,8 @@
         <div id="menu-wrap">
             <button id="menu-btn">Kringum Cruise</button>
             <div id="menu-dropdown">
+                <div class="menu-item" id="menu-add-port">Add Port</div>
+                <div class="menu-item" id="menu-wiki-search">Wikipedia Search</div>
                 <div class="menu-item" id="menu-settings">Settings</div>
             </div>
         </div>
@@ -285,7 +337,105 @@
         <div class="hint">Click an item to place it here. Press ESC to cancel.</div>
     </div>
 
+    <div id="wiki-panel">
+        <h3 id="wiki-title">Nearby</h3>
+        <div id="wiki-ai-row" style="display:flex;gap:6px;margin-bottom:10px">
+            <input type="text" id="wiki-ai-name" placeholder="Place name..."
+                style="flex:1;padding:6px 8px;font-size:13px;border:1px solid #ccc;border-radius:4px;font-family:inherit">
+            <button id="wiki-ai-btn" class="btn-save" style="padding:6px 14px;font-size:13px;white-space:nowrap">Add with AI</button>
+        </div>
+        <div id="wiki-list"></div>
+        <div class="hint">Edit the name above or click a Wikipedia article. ESC to cancel.</div>
+    </div>
+
+    <div class="modal-overlay" id="edit-overlay">
+        <div class="modal">
+            <h2>Edit Item</h2>
+            <input type="hidden" id="edit-item-id">
+            <div class="edit-field">
+                <label for="edit-name">Name</label>
+                <input type="text" id="edit-name">
+            </div>
+            <div class="edit-field">
+                <label for="edit-tag">Category</label>
+                <select id="edit-tag">
+                    <option value="Nature">Nature</option>
+                    <option value="History">History</option>
+                    <option value="Culture">Culture</option>
+                    <option value="Photo">Photo</option>
+                    <option value="Guide">Guide</option>
+                </select>
+            </div>
+            <div class="edit-field">
+                <label for="edit-story">Text</label>
+                <textarea id="edit-story"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="edit-cancel">Cancel</button>
+                <button class="btn-save" id="edit-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="newitem-overlay">
+        <div class="modal">
+            <h2>New Item</h2>
+            <input type="hidden" id="newitem-lat">
+            <input type="hidden" id="newitem-lon">
+            <div class="edit-field">
+                <label for="newitem-name">Name</label>
+                <input type="text" id="newitem-name" placeholder="Item name...">
+            </div>
+            <div class="edit-field">
+                <label for="newitem-tag">Category</label>
+                <select id="newitem-tag">
+                    <option value="Nature">Nature</option>
+                    <option value="History">History</option>
+                    <option value="Culture" selected>Culture</option>
+                    <option value="Photo">Photo</option>
+                    <option value="Guide">Guide</option>
+                </select>
+            </div>
+            <div class="edit-field">
+                <label for="newitem-story">Description</label>
+                <textarea id="newitem-story" style="height:160px" placeholder="Write a description..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="newitem-cancel">Cancel</button>
+                <button class="btn-save" id="newitem-save">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="addport-overlay">
+        <div class="modal">
+            <h2>Add Port</h2>
+            <div class="edit-field">
+                <label for="addport-name">Name</label>
+                <input type="text" id="addport-name" placeholder="e.g. Reykjavík">
+            </div>
+            <div class="edit-field">
+                <label for="addport-country">Country</label>
+                <input type="text" id="addport-country" placeholder="e.g. Iceland">
+            </div>
+            <div class="edit-field">
+                <label for="addport-gps">GPS (lat,lon)</label>
+                <input type="text" id="addport-gps" placeholder="e.g. 64.15,-21.93">
+            </div>
+            <div class="edit-field">
+                <label for="addport-desc">Description</label>
+                <textarea id="addport-desc" style="height:80px"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="addport-cancel">Cancel</button>
+                <button class="btn-save" id="addport-save">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="relocate-hint" id="addport-hint">Click on the map to place the new port (ESC to cancel)</div>
     <div class="relocate-hint" id="relocate-hint">Click on the map to set new location (ESC to cancel)</div>
+    <div class="relocate-hint" id="wiki-hint">Click on the map to search Wikipedia nearby (ESC to cancel)</div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -471,7 +621,7 @@
             let cls = "item-marker-dot";
             if (!geocoded) cls += " nogeo";
             if (selected) cls += " selected";
-            const size = selected ? 16 : 12;
+            const size = selected ? 32 : 24;
             const anchor = size / 2;
             return L.divIcon({
                 html: `<div class="${cls}"></div><div class="item-marker-label">${escapeHtml(label)}</div>`,
@@ -559,6 +709,10 @@
             }
             html += `<button class="port-action-btn" style="background:#3388ff"
                     onclick="startRelocate(${item.id})">Reset location</button>
+                <button class="port-action-btn" style="background:#27ae60"
+                    onclick="openEditModal(${item.id})">Edit item</button>
+                <button class="port-action-btn clear"
+                    onclick="deleteItem(${item.id})">Delete item</button>
             </div>`;
             return html;
         }
@@ -589,8 +743,308 @@
             }
         }
 
+        // Add port mode
+        let addPortMode = false;
+
+        function toggleAddPortMode() {
+            addPortMode = !addPortMode;
+            if (addPortMode) {
+                cancelRelocate();
+                exitWikiMode();
+                closePlacePanel();
+                document.getElementById("map").style.cursor = "crosshair";
+                document.getElementById("addport-hint").classList.add("active");
+            } else {
+                exitAddPortMode();
+            }
+        }
+
+        function exitAddPortMode() {
+            addPortMode = false;
+            document.getElementById("map").style.cursor = "";
+            document.getElementById("addport-hint").classList.remove("active");
+        }
+
+        // Wikipedia search mode
+        let wikiSearchMode = false;
+
+        function toggleWikiMode() {
+            wikiSearchMode = !wikiSearchMode;
+            if (wikiSearchMode) {
+                cancelRelocate();
+                exitAddPortMode();
+                closePlacePanel();
+                closeWikiPanel();
+                document.getElementById("map").style.cursor = "crosshair";
+                document.getElementById("wiki-hint").classList.add("active");
+            } else {
+                exitWikiMode();
+            }
+        }
+
+        function exitWikiMode() {
+            wikiSearchMode = false;
+            document.getElementById("map").style.cursor = "";
+            document.getElementById("wiki-hint").classList.remove("active");
+            closeWikiPanel();
+        }
+
+        function closeWikiPanel() {
+            document.getElementById("wiki-panel").classList.remove("open");
+            document.getElementById("wiki-list").innerHTML = "";
+        }
+
+        let _wikiClickLat = 0, _wikiClickLon = 0;
+
+        function performWikiSearch(lat, lon) {
+            _wikiClickLat = lat;
+            _wikiClickLon = lon;
+            const panel = document.getElementById("wiki-panel");
+            const title = document.getElementById("wiki-title");
+            const list = document.getElementById("wiki-list");
+            const nameInput = document.getElementById("wiki-ai-name");
+            const aiBtn = document.getElementById("wiki-ai-btn");
+            title.textContent = "Searching...";
+            list.innerHTML = "";
+            nameInput.value = "";
+            aiBtn.disabled = true;
+            aiBtn.textContent = "Add with AI";
+            panel.classList.add("open");
+            setTimeout(() => { aiBtn.disabled = false; }, 300);
+
+            Promise.all([
+                fetch(`/api/wiki/geosearch?lat=${lat}&lon=${lon}`)
+                    .then(r => r.ok ? r.json() : []),
+                fetch(`/api/geo/reverse?lat=${lat}&lon=${lon}`)
+                    .then(r => r.ok ? r.json() : { name: "" }),
+            ]).then(([results, geo]) => {
+                nameInput.value = geo.name || "";
+                if (!results.length) {
+                    title.textContent = geo.name ? "No Wikipedia articles — use AI instead" : "Nothing found nearby";
+                } else {
+                    title.textContent = `Wikipedia nearby (${results.length})`;
+                }
+                results.forEach(article => {
+                    const div = document.createElement("div");
+                    div.className = "wiki-item";
+                    const distText = article.dist < 1000
+                        ? `${Math.round(article.dist)} m`
+                        : `${(article.dist / 1000).toFixed(1)} km`;
+                    div.innerHTML = escapeHtml(article.title)
+                        + ` <span class="wiki-dist">${distText}</span>`;
+                    div.addEventListener("click", () => importWikiArticle(article, div));
+                    list.appendChild(div);
+                });
+
+                // "New item" option at the bottom
+                const newDiv = document.createElement("div");
+                newDiv.className = "wiki-item";
+                newDiv.style.borderTop = "1px solid #ddd";
+                newDiv.style.marginTop = "6px";
+                newDiv.style.paddingTop = "10px";
+                newDiv.innerHTML = `<b>+ New item...</b> <span class="wiki-dist" style="background:#27ae60">manual</span>`;
+                newDiv.addEventListener("click", () => openNewItemModal(lat, lon));
+                list.appendChild(newDiv);
+
+                setTimeout(() => { nameInput.focus(); nameInput.select(); }, 100);
+            })
+            .catch(err => {
+                title.textContent = "Search failed";
+                list.innerHTML = `<div class="hint">${escapeHtml(err.message)}</div>`;
+            });
+        }
+
+        function submitAiName() {
+            const name = document.getElementById("wiki-ai-name").value.trim();
+            if (!name) return;
+            const btn = document.getElementById("wiki-ai-btn");
+            btn.disabled = true;
+            btn.textContent = "Generating...";
+            importClaudeArticle({ name, lat: _wikiClickLat, lon: _wikiClickLon });
+        }
+
+        function importClaudeArticle(article) {
+            fetch("/api/claude/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: article.name,
+                    lat: article.lat,
+                    lon: article.lon,
+                })
+            })
+            .then(r => {
+                if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Import failed"); });
+                return r.json();
+            })
+            .then(newItem => {
+                const coords = parseGps(newItem.gps);
+                if (coords) {
+                    const marker = L.marker(coords, { icon: makeItemIcon(newItem.name, false, newItem.geocoded) })
+                        .addTo(itemLayer);
+                    marker.on("click", () => selectItem(newItem.id));
+                    itemMarkers.set(newItem.id, { marker, item: newItem });
+                }
+                exitWikiMode();
+                closeWikiPanel();
+                selectItem(newItem.id);
+            })
+            .catch(err => {
+                alert("Import failed: " + err.message);
+                const btn = document.getElementById("wiki-ai-btn");
+                btn.disabled = false;
+                btn.textContent = "Add with AI";
+            });
+        }
+
+        function importWikiArticle(article, div) {
+            if (div.classList.contains("importing")) return;
+            div.classList.add("importing");
+            div.textContent = article.title + " — importing...";
+
+            fetch("/api/wiki/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    pageid: article.pageid,
+                    title: article.title,
+                    lat: article.lat,
+                    lon: article.lon,
+                })
+            })
+            .then(r => {
+                if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Import failed"); });
+                return r.json();
+            })
+            .then(newItem => {
+                const coords = parseGps(newItem.gps);
+                if (coords) {
+                    const marker = L.marker(coords, { icon: makeItemIcon(newItem.name, false, newItem.geocoded) })
+                        .addTo(itemLayer);
+                    marker.on("click", () => selectItem(newItem.id));
+                    itemMarkers.set(newItem.id, { marker, item: newItem });
+                }
+                exitWikiMode();
+                selectItem(newItem.id);
+            })
+            .catch(err => {
+                alert("Import failed: " + err.message);
+                div.classList.remove("importing");
+                div.textContent = article.title;
+            });
+        }
+
+        // Edit item modal
+        function deleteItem(itemId) {
+            if (!confirm("Delete this item?")) return;
+            map.closePopup();
+            fetch(`/api/items/${itemId}`, { method: "DELETE" })
+                .then(r => {
+                    if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Delete failed"); });
+                    return r.json();
+                })
+                .then(() => {
+                    const entry = itemMarkers.get(itemId);
+                    if (entry) {
+                        itemLayer.removeLayer(entry.marker);
+                        itemMarkers.delete(itemId);
+                    }
+                    if (selectedItemId === itemId) selectedItemId = null;
+                })
+                .catch(err => alert("Delete failed: " + err.message));
+        }
+
+        function openNewItemModal(lat, lon) {
+            closeWikiPanel();
+            exitWikiMode();
+            document.getElementById("newitem-lat").value = lat;
+            document.getElementById("newitem-lon").value = lon;
+            document.getElementById("newitem-name").value = "";
+            document.getElementById("newitem-tag").value = "Culture";
+            document.getElementById("newitem-story").value = "";
+            document.getElementById("newitem-overlay").classList.add("open");
+            setTimeout(() => document.getElementById("newitem-name").focus(), 100);
+        }
+
+        function saveNewItem() {
+            const name = document.getElementById("newitem-name").value.trim();
+            if (!name) {
+                alert("Name is required");
+                document.getElementById("newitem-name").focus();
+                return;
+            }
+            const tag = document.getElementById("newitem-tag").value;
+            const story = document.getElementById("newitem-story").value;
+            const lat = parseFloat(document.getElementById("newitem-lat").value);
+            const lon = parseFloat(document.getElementById("newitem-lon").value);
+
+            fetch("/api/items", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, tag, story, lat, lon })
+            })
+            .then(r => {
+                if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Failed"); });
+                return r.json();
+            })
+            .then(newItem => {
+                document.getElementById("newitem-overlay").classList.remove("open");
+                const coords = parseGps(newItem.gps);
+                if (coords) {
+                    const marker = L.marker(coords, { icon: makeItemIcon(newItem.name, false, newItem.geocoded) })
+                        .addTo(itemLayer);
+                    marker.on("click", () => selectItem(newItem.id));
+                    itemMarkers.set(newItem.id, { marker, item: newItem });
+                }
+                selectItem(newItem.id);
+            })
+            .catch(err => alert("Create failed: " + err.message));
+        }
+
+        function openEditModal(itemId) {
+            const entry = itemMarkers.get(itemId);
+            if (!entry) return;
+            map.closePopup();
+            document.getElementById("edit-item-id").value = itemId;
+            document.getElementById("edit-name").value = entry.item.name || "";
+            document.getElementById("edit-tag").value = entry.item.tag || "Culture";
+            document.getElementById("edit-story").value = entry.item.story || "";
+            document.getElementById("edit-overlay").classList.add("open");
+        }
+
+        function saveItemEdit() {
+            const itemId = parseInt(document.getElementById("edit-item-id").value);
+            const name = document.getElementById("edit-name").value.trim();
+            const tag = document.getElementById("edit-tag").value;
+            const story = document.getElementById("edit-story").value;
+            if (!name) { alert("Name is required"); return; }
+
+            fetch(`/api/items/${itemId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, tag, story })
+            })
+            .then(r => {
+                if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Save failed"); });
+                return r.json();
+            })
+            .then(() => {
+                document.getElementById("edit-overlay").classList.remove("open");
+                // Update local data and marker
+                const entry = itemMarkers.get(itemId);
+                if (entry) {
+                    entry.item.name = name;
+                    entry.item.tag = tag;
+                    entry.item.story = story;
+                    entry.marker.setIcon(makeItemIcon(name, itemId === selectedItemId, entry.item.geocoded));
+                }
+            })
+            .catch(err => alert("Save failed: " + err.message));
+        }
+
         function startRelocate(itemId) {
             relocatingItemId = itemId;
+            exitWikiMode();
             map.closePopup();
             document.getElementById("map").style.cursor = "crosshair";
             document.getElementById("relocate-hint").classList.add("active");
@@ -638,6 +1092,7 @@
                         <div class="popup-story">${escapeHtml(port.description || "")}</div>
                         ${countLine}
                         ${btnHtml}
+                        <button class="port-action-btn clear" onclick="deletePort(${port.id}, this)">Delete port</button>
                         <div class="port-progress" id="pp-${port.id}"><div class="port-progress-bar"></div></div>
                     </div>`;
                     marker.unbindPopup();
@@ -684,6 +1139,25 @@
                 });
         }
 
+        function deletePort(portId, btn) {
+            if (!confirm("Delete this port and all its items?")) return;
+            btn.disabled = true;
+            fetch(`/api/ports/${portId}`, { method: "DELETE" })
+                .then(r => {
+                    if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Delete failed"); });
+                    return r.json();
+                })
+                .then(() => {
+                    map.closePopup();
+                    loadPorts();
+                    loadItems();
+                })
+                .catch(err => {
+                    alert("Delete failed: " + err.message);
+                    btn.disabled = false;
+                });
+        }
+
         // Haversine distance in km
         function haversineKm(lat1, lon1, lat2, lon2) {
             const R = 6371;
@@ -708,9 +1182,25 @@
             if (e.key === "Escape") {
                 if (relocatingItemId !== null) {
                     cancelRelocate();
+                } else if (addPortMode) {
+                    exitAddPortMode();
+                } else if (wikiSearchMode) {
+                    exitWikiMode();
+                } else if (document.getElementById("wiki-panel").classList.contains("open")) {
+                    closeWikiPanel();
+                } else if (document.getElementById("newitem-overlay").classList.contains("open")) {
+                    document.getElementById("newitem-overlay").classList.remove("open");
+                } else if (document.getElementById("edit-overlay").classList.contains("open")) {
+                    document.getElementById("edit-overlay").classList.remove("open");
                 } else {
                     closePlacePanel();
                 }
+            }
+            if (e.key === "w" && !e.ctrlKey && !e.metaKey
+                && document.activeElement.tagName !== "INPUT"
+                && document.activeElement.tagName !== "TEXTAREA"
+                && document.activeElement.tagName !== "SELECT") {
+                toggleWikiMode();
             }
         });
 
@@ -730,6 +1220,23 @@
                     cancelRelocate();
                     loadItems();
                 });
+                return;
+            }
+
+            // Add port mode
+            if (addPortMode) {
+                exitAddPortMode();
+                document.getElementById("addport-gps").value = `${clickLat.toFixed(5)},${clickLon.toFixed(5)}`;
+                document.getElementById("addport-name").value = "";
+                document.getElementById("addport-country").value = "";
+                document.getElementById("addport-desc").value = "";
+                document.getElementById("addport-overlay").classList.add("open");
+                return;
+            }
+
+            // Wikipedia search mode (toggle or Ctrl+click)
+            if (wikiSearchMode || e.originalEvent.ctrlKey) {
+                performWikiSearch(clickLat, clickLon);
                 return;
             }
 
@@ -830,6 +1337,82 @@
             .then(r => r.json())
             .then(() => { overlay.classList.remove("open"); });
         });
+
+        // Add port
+        const addportOverlay = document.getElementById("addport-overlay");
+        document.getElementById("menu-add-port").addEventListener("click", () => {
+            menuDropdown.style.display = "none";
+            toggleAddPortMode();
+        });
+        document.getElementById("addport-cancel").addEventListener("click", () => {
+            addportOverlay.classList.remove("open");
+        });
+        addportOverlay.addEventListener("click", e => {
+            if (e.target === addportOverlay) addportOverlay.classList.remove("open");
+        });
+        document.getElementById("addport-save").addEventListener("click", () => {
+            const name = document.getElementById("addport-name").value.trim();
+            if (!name) { alert("Name is required"); return; }
+            const body = {
+                name,
+                country: document.getElementById("addport-country").value.trim(),
+                gps: document.getElementById("addport-gps").value.trim(),
+                description: document.getElementById("addport-desc").value.trim(),
+            };
+            fetch("/api/ports", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+            })
+            .then(r => {
+                if (!r.ok) return r.json().then(d => { throw new Error(d.error || "Failed"); });
+                return r.json();
+            })
+            .then(() => {
+                addportOverlay.classList.remove("open");
+                loadPorts();
+            })
+            .catch(err => alert("Add port failed: " + err.message));
+        });
+
+        // New item modal
+        const newitemOverlay = document.getElementById("newitem-overlay");
+        document.getElementById("newitem-cancel").addEventListener("click", () => {
+            newitemOverlay.classList.remove("open");
+        });
+        // Block closing by clicking overlay unless cancelled — name must be filled
+        newitemOverlay.addEventListener("click", e => {
+            if (e.target === newitemOverlay) {
+                if (!document.getElementById("newitem-name").value.trim()) {
+                    document.getElementById("newitem-name").focus();
+                } else {
+                    newitemOverlay.classList.remove("open");
+                }
+            }
+        });
+        document.getElementById("newitem-save").addEventListener("click", saveNewItem);
+
+        // AI name input
+        document.getElementById("wiki-ai-btn").addEventListener("click", submitAiName);
+        document.getElementById("wiki-ai-name").addEventListener("keydown", e => {
+            if (e.key === "Enter") submitAiName();
+        });
+
+        // Wikipedia search menu item
+        document.getElementById("menu-wiki-search").addEventListener("click", () => {
+            menuDropdown.style.display = "none";
+            toggleWikiMode();
+        });
+
+        // Edit modal
+        const editOverlay = document.getElementById("edit-overlay");
+        document.getElementById("edit-cancel").addEventListener("click", () => {
+            editOverlay.classList.remove("open");
+        });
+        editOverlay.addEventListener("click", e => {
+            if (e.target === editOverlay) editOverlay.classList.remove("open");
+        });
+        document.getElementById("edit-save").addEventListener("click", saveItemEdit);
     </script>
 </body>
 </html>
